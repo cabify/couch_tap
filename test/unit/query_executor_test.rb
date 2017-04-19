@@ -289,7 +289,7 @@ class QueryExecutorTest < Test::Unit::TestCase
   end
 
   class SpecialItemInsertCallback < CouchTap::Callbacks::Callback
-    def execute(buffer)
+    def execute(buffer, metrics, logger)
       buffer.insert(CouchTap::Operations::InsertOperation.new(:items, true, 987, item_id: 987))
     end
   end

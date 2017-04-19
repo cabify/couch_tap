@@ -92,7 +92,7 @@ module CouchTap
       batch_summary = {}
       total_timing = measure do
         @database.transaction do
-          start_of_transaction_callbacks.each { |cbk| cbk.execute(@buffer) }
+          start_of_transaction_callbacks.each { |cbk| cbk.execute(@buffer, @metrics, logger) }
           @buffer.each do |entity|
            logger.debug "Processing queries for #{entity.name}"
             batch_summary[entity.name] ||= []

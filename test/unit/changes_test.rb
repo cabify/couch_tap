@@ -80,7 +80,7 @@ class ChangesTest < Test::Unit::TestCase
   end
 
   class RenameCallback < CouchTap::Callbacks::Callback
-    def execute(doc)
+    def execute(doc, metrics, logger)
       doc['name'] = 'RENAMED!!'
     end
   end

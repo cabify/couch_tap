@@ -137,7 +137,7 @@ module CouchTap
           handlers.each{ |handler| handler.delete({ '_id' => id }, @operations_queue) }
         else
           doc = row['doc']
-          before_process_doc_callbacks.each { |cbk| cbk.execute(doc) }
+          before_process_doc_callbacks.each { |cbk| cbk.execute(doc, @metrics, logger) }
           find_document_handlers(doc).each do |handler|
             # Delete all previous entries of doc, then re-create
             handler.delete(doc, @operations_queue)

@@ -3,14 +3,14 @@ require 'test_helper'
 class FunctionalChangesTest < Test::Unit::TestCase
 
   class AddDummyFieldCallback < CouchTap::Callbacks::Callback
-    def execute(document)
+    def execute(document, metrics, logger)
       document[:dummy_field] = true
     end
   end
 
 
   class CountTransactionsCallback < CouchTap::Callbacks::Callback
-    def execute(buffer)
+    def execute(buffer, metrics, logger)
       buffer.insert(CouchTap::Operations::InsertOperation.new(:items_count, true, TEST_DB_NAME, name: TEST_DB_NAME, count: buffer.size))
     end
   end
