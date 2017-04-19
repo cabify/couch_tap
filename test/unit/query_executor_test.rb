@@ -301,7 +301,7 @@ class QueryExecutorTest < Test::Unit::TestCase
     handler.expects(:new).returns(handler_instance)
     handler_instance.expects(:execute).with(executor.instance_variable_get(:@buffer))
 
-    executor.add_transaction_handler(handler, :beginning)
+    executor.add_pre_transaction_handler(handler)
 
     @queue.add_operation(begin_transaction_operation)
     @queue.add_operation(item_to_insert(true, 123))

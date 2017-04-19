@@ -71,8 +71,8 @@ module CouchTap
       @queue.close
     end
 
-    def add_transaction_handler(handler, phase)
-      (@transaction_handlers[phase] ||= []) << handler.new
+    def add_pre_transaction_handler(handler)
+      (@transaction_handlers[START_OF_TRANSACTION_PHASE] ||= []) << handler.new
     end
 
     private
@@ -117,6 +117,7 @@ module CouchTap
               batch_summary[entity.name] << "Inserted #{values.size} in #{delta} ms."
               logger.debug "#{entity.name}:  #{values.size} rows inserted in #{delta} ms."
             end
+            # TODO possible post transaction handlers should run here
           end
 
           logger.debug "Changes applied, updating sequence number now to #{@seq}"
