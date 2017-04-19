@@ -6,6 +6,8 @@ module CouchTap
     INACTIVITY_TIMEOUT = 70
     RECONNECT_TIMEOUT  = 15
 
+    BEFORE_PROCESS_DOC_PHASE = :before_process_doc
+
     attr_reader :source, :schemas, :handlers, :query_executor
 
     # Start a new Changes instance by connecting to the provided
@@ -20,6 +22,8 @@ module CouchTap
       @http     = HTTPClient.new
 
       @timeout  = opts.fetch(:timeout, 60)
+
+      @callbacks = {}
 
       logger.info "Connected to CouchDB: #{@source.info['db_name']}"
 
@@ -41,6 +45,11 @@ module CouchTap
     def before_transaction(name)
       raise "We need database configuration before adding handlers!!" unless @query_executor
       @query_executor.add_pre_transaction_handler(name)
+    end
+
+    def before_process_document(callback)
+      raise "Unexpected callback object #{callback.class}. Callbacks must inherit CouchTap::Callback" unless callback.class < CouchTap::Callbacks::Callback
+      (@callbacks[BEFORE_PROCESS_DOC_PHASE] ||= []) << callback
     end
 
     #### END DSL
@@ -80,7 +89,7 @@ module CouchTap
       retry_exception = Proc.new do |exception|
         logger.error "#{source.name}: connection failed: #{e.message}, attempting to reconnect in #{RECONNECT_TIMEOUT}s..."
       end
-      Retryable.retryable(tries: 4, 
+      Retryable.retryable(tries: 4,
                           sleep: lambda { |n| 4**n },
                           exception_cb: retry_exception,
                           on: [HTTPClient::TimeoutError, HTTPClient::BadResponseError]) do
@@ -128,6 +137,7 @@ module CouchTap
           handlers.each{ |handler| handler.delete({ '_id' => id }, @operations_queue) }
         else
           doc = row['doc']
+          before_process_doc_callbacks.each { |cbk| cbk.execute(doc) }
           find_document_handlers(doc).each do |handler|
             # Delete all previous entries of doc, then re-create
             handler.delete(doc, @operations_queue)
@@ -160,6 +170,10 @@ module CouchTap
 
     def logger
       CouchTap.logger
+    end
+
+    def before_process_doc_callbacks
+      @callbacks[BEFORE_PROCESS_DOC_PHASE] || []
     end
   end
 end

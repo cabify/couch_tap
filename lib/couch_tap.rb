@@ -27,6 +27,7 @@ require 'couch_tap/operations/close_queue_operation'
 require 'couch_tap/operations/timer_fired_signal'
 require 'couch_tap/operations_queue'
 require 'couch_tap/metrics'
+require 'couch_tap/callbacks/callback'
 
 module CouchTap
   extend self

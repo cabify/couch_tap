@@ -79,6 +79,27 @@ class ChangesTest < Test::Unit::TestCase
     assert @queue.pop.is_a? CouchTap::Operations::TimerFiredSignal
   end
 
+  class RenameCallback < CouchTap::Callbacks::Callback
+    def execute(doc)
+      doc['name'] = 'RENAMED!!'
+    end
+  end
+
+  def test_before_process_document_callback
+    doc = {'_id' => '1234', 'type' => 'Foo', 'name' => 'Some Document'}
+    row = {'seq' => 1, 'id' => '1234', 'doc' => doc}
+
+    @changes.before_process_document RenameCallback.new
+
+    @changes.send(:process_row, row)
+
+    assert_equal 4, @queue.length
+    assert_equal CouchTap::Operations::BeginTransactionOperation.new, @queue.pop
+    assert_equal CouchTap::Operations::DeleteOperation.new(:foo, true, :foo_id, '1234'), @queue.pop
+    assert_equal CouchTap::Operations::InsertOperation.new(:foo, true, '1234', foo_id: '1234', name: 'RENAMED!!'), @queue.pop
+    assert_equal CouchTap::Operations::EndTransactionOperation.new(1), @queue.pop
+  end
+
   protected
 
   def build_sample_config
