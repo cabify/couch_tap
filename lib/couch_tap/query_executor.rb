@@ -1,8 +1,10 @@
 
 require 'couch_tap/query_buffer'
+require 'couch_tap/transaction_handler'
 
 module CouchTap
   class QueryExecutor
+    START_OF_TRANSACTION_PHASE = :beginning
 
     attr_reader :database, :seq
 
@@ -27,6 +29,9 @@ module CouchTap
       @last_transaction_ran_at = Time.at(0)
 
       @timeout_time = data.fetch(:timeout, 60)
+
+      @transaction_handlers = {}
+
       @seq = find_or_create_sequence_number(name)
       logger.info "QueryExecutor successfully initialised with sequence: #{@seq}"
     end
@@ -66,6 +71,10 @@ module CouchTap
       @queue.close
     end
 
+    def add_transaction_handler(handler, phase)
+      (@transaction_handlers[phase] ||= []) << handler.new
+    end
+
     private
 
     def run_transaction(seq)
@@ -84,6 +93,7 @@ module CouchTap
       batch_summary = {}
       total_timing = measure do
         @database.transaction do
+          start_of_transaction_handlers.each { |handler| handler.execute(@buffer) }
           @buffer.each do |entity|
            logger.debug "Processing queries for #{entity.name}"
             batch_summary[entity.name] ||= []
@@ -160,6 +170,10 @@ module CouchTap
 
     def logger
       CouchTap.logger
+    end
+
+    def start_of_transaction_handlers
+      @transaction_handlers[START_OF_TRANSACTION_PHASE] || []
     end
   end
 end

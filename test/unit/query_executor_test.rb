@@ -3,6 +3,11 @@ require 'test_helper'
 
 class QueryExecutorTest < Test::Unit::TestCase
 
+  class DummyHandler < CouchTap::TransactionHandler
+    def execute(buffer)
+    end
+  end
+
   def setup
     @queue = CouchTap::OperationsQueue.new
   end
@@ -284,6 +289,24 @@ class QueryExecutorTest < Test::Unit::TestCase
     @queue.close
 
     executor.database.expects(:transaction).never
+
+    executor.start
+  end
+
+  def test_runs_pre_transaction_handler
+    executor = config_executor 1
+
+    handler = DummyHandler
+    handler_instance = DummyHandler.new
+    handler.expects(:new).returns(handler_instance)
+    handler_instance.expects(:execute).with(executor.instance_variable_get(:@buffer))
+
+    executor.add_transaction_handler(handler, :beginning)
+
+    @queue.add_operation(begin_transaction_operation)
+    @queue.add_operation(item_to_insert(true, 123))
+    @queue.add_operation(end_transaction_operation(1))
+    @queue.close
 
     executor.start
   end
