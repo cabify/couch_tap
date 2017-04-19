@@ -9,7 +9,7 @@ class FunctionalChangesTest < Test::Unit::TestCase
   end
 
 
-  class CountTransactionsHandler < CouchTap::TransactionHandler
+  class CountTransactionsCallback < CouchTap::Callbacks::Callback
     def execute(buffer)
       buffer.insert(CouchTap::Operations::InsertOperation.new(:items_count, true, TEST_DB_NAME, name: TEST_DB_NAME, count: buffer.size))
     end
@@ -278,7 +278,7 @@ class FunctionalChangesTest < Test::Unit::TestCase
     changes = CouchTap::Changes.new(couch_db: TEST_DB_ROOT, timeout: 60) do
       database db: 'sqlite:/', batch_size: opts.fetch(:batch_size)
 
-      before_transaction CountTransactionsHandler
+      before_transaction CountTransactionsCallback.new
       before_process_document AddDummyFieldCallback.new
 
       document type: 'Sale' do

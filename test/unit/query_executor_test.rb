@@ -288,16 +288,16 @@ class QueryExecutorTest < Test::Unit::TestCase
     executor.start
   end
 
-  class SpecialItemInsertHandler < CouchTap::TransactionHandler
+  class SpecialItemInsertCallback < CouchTap::Callbacks::Callback
     def execute(buffer)
       buffer.insert(CouchTap::Operations::InsertOperation.new(:items, true, 987, item_id: 987))
     end
   end
 
-  def test_runs_pre_transaction_handler
+  def test_runs_pre_transaction_callback
     executor = config_executor 1
 
-    executor.add_pre_transaction_handler(SpecialItemInsertHandler)
+    executor.add_pre_transaction_callback(SpecialItemInsertCallback.new)
 
     @queue.add_operation(begin_transaction_operation)
     @queue.add_operation(item_to_insert(true, 123))

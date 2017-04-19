@@ -42,9 +42,9 @@ module CouchTap
       @handlers << DocumentHandler.new(self, filter, &block)
     end
 
-    def before_transaction(name)
+    def before_transaction(callback)
       raise "We need database configuration before adding handlers!!" unless @query_executor
-      @query_executor.add_pre_transaction_handler(name)
+      @query_executor.add_pre_transaction_callback(callback)
     end
 
     def before_process_document(callback)
