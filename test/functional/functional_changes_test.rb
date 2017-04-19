@@ -2,6 +2,12 @@ require 'test_helper'
 
 class FunctionalChangesTest < Test::Unit::TestCase
 
+  class CountTransactionsHandler < CouchTap::TransactionHandler
+    def execute(buffer)
+      buffer.insert(CouchTap::Operations::InsertOperation.new(:items_count, true, TEST_DB_NAME, name: TEST_DB_NAME, count: buffer.size))
+    end
+  end
+
   def test_insert_sales
     doc = { "id" => 1, "seq" => 123, "doc" => {
       "_id" => "10", "type" => "Sale", "code" => "Code 1", "amount" => 600
@@ -17,6 +23,7 @@ class FunctionalChangesTest < Test::Unit::TestCase
     assert_equal 1, sales.count
     assert_equal({ sale_id: "10", code: "Code 1", amount: 600 }, sales.first)
     assert_sequence changes.seq, 123
+    assert_count 3
   end
 
   def test_insert_multiple_sales
@@ -44,6 +51,7 @@ class FunctionalChangesTest < Test::Unit::TestCase
     assert_includes sales, sale_id: "11", code: "Code 2", amount: 1000
     assert_includes sales, sale_id: "12", code: "Code 3", amount: 325
     assert_sequence changes.seq, 125
+    assert_count 3
   end
 
   def test_insert_multiple_sales_in_same_batch
@@ -71,6 +79,7 @@ class FunctionalChangesTest < Test::Unit::TestCase
     assert_includes sales, sale_id: "11", code: "Code 2", amount: 1000
     assert_includes sales, sale_id: "12", code: "Code 3", amount: 325
     assert_sequence changes.seq, 125
+    assert_count 9
   end
 
   def test_insert_and_update_sale_in_different_batch
@@ -93,6 +102,7 @@ class FunctionalChangesTest < Test::Unit::TestCase
     assert_equal 1, sales.count
     assert_equal({ sale_id: "10", code: "Code 2", amount: 800 }, sales.first)
     assert_sequence changes.seq, 124
+    assert_count 3
   end
 
   def test_insert_and_update_sale_in_same_batch
@@ -115,6 +125,7 @@ class FunctionalChangesTest < Test::Unit::TestCase
     assert_equal 1, sales.count
     assert_equal({ sale_id: "10", code: "Code 2", amount: 800 }, sales.first)
     assert_sequence changes.seq, 124
+    assert_count 6
  end
 
   def test_insert_sales_and_nested_entries
@@ -140,6 +151,7 @@ class FunctionalChangesTest < Test::Unit::TestCase
     assert_includes entries, sale_id: "50", price: 100
 
     assert_sequence changes.seq, 111
+    assert_count 5
   end
 
   def test_insert_and_update_sales_and_nested_entries
@@ -168,6 +180,7 @@ class FunctionalChangesTest < Test::Unit::TestCase
     assert_includes entries, sale_id: "50", price: 600
 
     assert_sequence changes.seq, 112
+    assert_count 5
   end
 
   def test_insert_and_update_sales_and_nested_entries_in_same_batch
@@ -196,6 +209,7 @@ class FunctionalChangesTest < Test::Unit::TestCase
     assert_includes entries, sale_id: "50", price: 600
 
     assert_sequence changes.seq, 112
+    assert_count 10
   end
 
   def insert_different_document_types
@@ -234,6 +248,7 @@ class FunctionalChangesTest < Test::Unit::TestCase
     assert_includes events, analytic_event_id: "3001", key: "double-click", value: "too much"
 
     assert_sequence changes.seq, 114
+    assert_count 10
   end
 
   def test_delete_children
@@ -247,6 +262,7 @@ class FunctionalChangesTest < Test::Unit::TestCase
     assert_equal 0, @database[:sales].count
     assert_equal 0, @database[:sale_entries].count
     assert_sequence changes.seq, 112
+    assert_count 5
   end
 
   protected
@@ -254,6 +270,8 @@ class FunctionalChangesTest < Test::Unit::TestCase
   def config_changes(opts)
     changes = CouchTap::Changes.new(couch_db: TEST_DB_ROOT, timeout: 60) do
       database db: 'sqlite:/', batch_size: opts.fetch(:batch_size)
+
+      before_transaction CountTransactionsHandler
 
       document type: 'Sale' do
         table :sales do
@@ -297,10 +315,19 @@ class FunctionalChangesTest < Test::Unit::TestCase
       String :key
       String :value
     end
+
+    connection.create_table :items_count do
+      String :name
+      Integer :count
+    end
   end
 
   def assert_sequence(in_memory, expected)
     assert_equal expected, in_memory
-    assert_equal expected, @database[:couch_sequence].where(name: "couch_tap").to_a.first[:seq]
+    assert_equal expected, @database[:couch_sequence].where(name: TEST_DB_NAME).to_a.first[:seq]
+  end
+
+  def assert_count(expected)
+    assert_equal expected, @database[:items_count].where(name: TEST_DB_NAME).first[:count]
   end
 end

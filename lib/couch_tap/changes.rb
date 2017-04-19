@@ -38,6 +38,11 @@ module CouchTap
       @handlers << DocumentHandler.new(self, filter, &block)
     end
 
+    def before_transaction(name)
+      raise "We need database configuration before adding handlers!!" unless @query_executor
+      @query_executor.add_pre_transaction_handler(name)
+    end
+
     #### END DSL
 
     def schema(name)
