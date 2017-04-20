@@ -297,15 +297,18 @@ class QueryExecutorTest < Test::Unit::TestCase
     executor.start
   end
 
-  def test_empty_batches_are_skipped
+  def test_empty_batches_update_last_transaction_at
     executor = config_executor 1
 
     @queue.add_operation(CouchTap::Operations::TimerFiredSignal.new)
     @queue.close
 
-    executor.database.expects(:transaction).never
+    t = Time.now
+    Timecop.freeze(t) { executor.start }
 
-    executor.start
+    sequence = executor.database[:couch_sequence].where(name: 'items').first
+    assert_equal 0, sequence[:seq]
+    assert_equal t, sequence[:last_transaction_at]
   end
 
   class SpecialItemInsertCallback < CouchTap::Callbacks::Callback
