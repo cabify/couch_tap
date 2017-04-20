@@ -2,7 +2,8 @@
 module CouchTap
   module Operations
     class InsertOperation
-      attr_reader :table, :top_level, :id, :attributes
+      attr_reader :table, :top_level, :id
+      attr_accessor :attributes
 
       def initialize(table, top_level, id, attributes)
         @table = table

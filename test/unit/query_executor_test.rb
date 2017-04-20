@@ -330,6 +330,33 @@ class QueryExecutorTest < Test::Unit::TestCase
     executor.start
 
     assert_equal 1, executor.database[:items].where(item_id: 987).count
+    assert_equal 1, executor.database[:items].where(item_id: 123).count
+  end
+
+  class UpdateCountCallback < CouchTap::Callbacks::Callback
+    def execute(operation, metrics, logger)
+      attrs = operation.attributes
+      attrs.merge!(count: attrs[:count] + 1)
+      operation.attributes = attrs
+    end
+  end
+
+  def test_runs_buffer_insert_callback
+    executor = config_executor 1
+
+    executor.add_buffer_insert_callback(UpdateCountCallback.new)
+
+    @queue.add_operation(begin_transaction_operation)
+    item = item_to_insert(true, 123)
+    count = item.attributes[:count]
+    @queue.add_operation(item)
+    @queue.add_operation(end_transaction_operation(1))
+    @queue.close
+
+    executor.start
+
+    assert_equal 1, executor.database[:items].where(item_id: 123).count
+    assert_equal count + 1, executor.database[:items].where(item_id: 123).first[:count]
   end
 
   private
@@ -354,7 +381,7 @@ class QueryExecutorTest < Test::Unit::TestCase
   end
 
   def item_to_insert(top_level, id)
-    CouchTap::Operations::InsertOperation.new(:items, top_level, id, item_id: id, name: 'dummy', count: rand())
+    CouchTap::Operations::InsertOperation.new(:items, top_level, id, item_id: id, name: 'dummy', count: rand(100_000))
   end
 
   def item_to_delete(id)

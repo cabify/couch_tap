@@ -43,6 +43,7 @@ module CouchTap
     end
 
     def before_transaction(callback)
+      raise "Unexpected callback object #{callback.class}. Callbacks must inherit CouchTap::Callback" unless callback.class < CouchTap::Callbacks::Callback
       raise "We need database configuration before adding handlers!!" unless @query_executor
       @query_executor.add_pre_transaction_callback(callback)
     end
@@ -51,6 +52,13 @@ module CouchTap
       raise "Unexpected callback object #{callback.class}. Callbacks must inherit CouchTap::Callback" unless callback.class < CouchTap::Callbacks::Callback
       (@callbacks[BEFORE_PROCESS_DOC_PHASE] ||= []) << callback
     end
+
+    def before_buffering_insert(callback)
+      raise "Unexpected callback object #{callback.class}. Callbacks must inherit CouchTap::Callback" unless callback.class < CouchTap::Callbacks::Callback
+      raise "We need database configuration before adding handlers!!" unless @query_executor
+      @query_executor.add_buffer_insert_callback(callback)
+    end
+
 
     #### END DSL
 

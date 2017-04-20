@@ -16,6 +16,16 @@ class FunctionalChangesTest < Test::Unit::TestCase
     end
   end
 
+  class PrefixEventKeyCallback < CouchTap::Callbacks::Callback
+    def execute(operation, metrics, logger)
+      if operation.table == :analytic_events
+        attrs = operation.attributes
+        attrs[:key] = "prefix.#{attrs[:key]}"
+        operation.attributes = attrs
+      end
+    end
+  end
+
   def test_insert_sales
     doc = { "id" => 1, "seq" => 123, "doc" => {
       "_id" => "10", "type" => "Sale", "code" => "Code 1", "amount" => 600
@@ -244,8 +254,8 @@ class FunctionalChangesTest < Test::Unit::TestCase
 
     events = @database[:analytic_events].to_a
     assert_equal 2, events.count
-    assert_includes events, analytic_event_id: "3000", key: "click", value: "yes", dummy_field: true
-    assert_includes events, analytic_event_id: "3001", key: "double-click", value: "too much", dummy_field: true
+    assert_includes events, analytic_event_id: "3000", key: "prefix.click", value: "yes", dummy_field: true
+    assert_includes events, analytic_event_id: "3001", key: "prefix.double-click", value: "too much", dummy_field: true
 
     assert_sequence changes.seq, 114
   end
@@ -271,6 +281,7 @@ class FunctionalChangesTest < Test::Unit::TestCase
 
       before_transaction UpdateTransactionTimeCallback.new
       before_process_document AddDummyFieldCallback.new
+      before_buffering_insert PrefixEventKeyCallback.new
 
       document type: 'Sale' do
         table :sales do

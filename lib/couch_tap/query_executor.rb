@@ -4,6 +4,7 @@ require 'couch_tap/query_buffer'
 module CouchTap
   class QueryExecutor
     START_OF_TRANSACTION_PHASE = :beginning
+    BUFFER_INSERT_PHASE = :buffer_insert
 
     attr_reader :database, :seq
 
@@ -29,7 +30,7 @@ module CouchTap
 
       @timeout_time = data.fetch(:timeout, 60)
 
-      @transaction_callbacks = {}
+      @callbacks = {}
 
       @seq = find_or_create_sequence_number(name)
       logger.info "QueryExecutor successfully initialised with sequence: #{@seq}"
@@ -39,6 +40,7 @@ module CouchTap
       while op = @queue.pop
         case op
         when Operations::InsertOperation
+          buffer_insert_callbacks.each { |cbk| cbk.execute(op, @metrics, logger) }
           @buffer.insert(op)
         when Operations::DeleteOperation
           @buffer.delete(op)
@@ -71,7 +73,11 @@ module CouchTap
     end
 
     def add_pre_transaction_callback(callback)
-      (@transaction_callbacks[START_OF_TRANSACTION_PHASE] ||= []) << callback
+      (@callbacks[START_OF_TRANSACTION_PHASE] ||= []) << callback
+    end
+
+    def add_buffer_insert_callback(callback)
+      (@callbacks[BUFFER_INSERT_PHASE] ||= []) << callback
     end
 
     private
@@ -165,7 +171,11 @@ module CouchTap
     end
 
     def start_of_transaction_callbacks
-      @transaction_callbacks[START_OF_TRANSACTION_PHASE] || []
+      @callbacks[START_OF_TRANSACTION_PHASE] || []
+    end
+
+    def buffer_insert_callbacks
+      @callbacks[BUFFER_INSERT_PHASE] || []
     end
   end
 end
