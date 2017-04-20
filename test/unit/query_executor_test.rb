@@ -47,7 +47,9 @@ class QueryExecutorTest < Test::Unit::TestCase
     end
 
     assert_equal 0, executor.database[:items].count
-    assert_equal 0, executor.database[:couch_sequence].where(name: 'items').first[:seq]
+    sequence = executor.database[:couch_sequence].where(name: 'items').first
+    assert_equal 0, sequence[:seq]
+    assert_equal nil, sequence[:last_transaction_at]
   end
 
   def test_delete_saves_the_data_if_not_full
@@ -104,7 +106,9 @@ class QueryExecutorTest < Test::Unit::TestCase
     end
 
     assert_equal 1, executor.database[:items].count
-    assert_equal 0, executor.database[:couch_sequence].where(name: 'items').first[:seq]
+    sequence = executor.database[:couch_sequence].where(name: 'items').first
+    assert_equal 0, sequence[:seq]
+    assert_equal nil, sequence[:last_transaction_at]
   end
 
   def test_create_and_delete_same_row
@@ -116,10 +120,13 @@ class QueryExecutorTest < Test::Unit::TestCase
     @queue.add_operation(end_transaction_operation(1))
     @queue.close
 
-    executor.start
+    t = Time.now
+    Timecop.freeze(t) { executor.start }
 
     assert_equal 0, executor.database[:items].where(item_id: 123).count
-    assert_equal 1, executor.database[:couch_sequence].where(name: 'items').first[:seq]
+    sequence = executor.database[:couch_sequence].where(name: 'items').first
+    assert_equal 1, sequence[:seq]
+    assert_equal t, sequence[:last_transaction_at]
   end
 
   def test_includes_whole_row_even_if_batch_gets_oversized
@@ -133,10 +140,13 @@ class QueryExecutorTest < Test::Unit::TestCase
     @queue.add_operation(end_transaction_operation(1))
     @queue.close
 
-    executor.start
+    t = Time.now
+    Timecop.freeze(t) { executor.start }
 
     assert_equal 4, executor.database[:items].count
-    assert_equal 1, executor.database[:couch_sequence].where(name: 'items').first[:seq]
+    sequence = executor.database[:couch_sequence].where(name: 'items').first
+    assert_equal 1, sequence[:seq]
+    assert_equal t, sequence[:last_transaction_at]
   end
 
   def test_combined_workload
@@ -152,6 +162,9 @@ class QueryExecutorTest < Test::Unit::TestCase
     @queue.add_operation(item_to_insert(true, 345))
     @queue.add_operation(item_to_insert(true, 456))
     @queue.add_operation(end_transaction_operation(1))
+    @queue.close
+
+    executor.start
 
     # Update item 234
     @queue.add_operation(begin_transaction_operation)
@@ -163,10 +176,13 @@ class QueryExecutorTest < Test::Unit::TestCase
     @queue.add_operation(end_transaction_operation(2))
     @queue.close
 
-    executor.start
+    t = Time.now
+    Timecop.freeze(t) { executor.start }
 
     assert_equal %w(234 456), executor.database[:items].select(:item_id).to_a.map { |i| i[:item_id] }
-    assert_equal 2, executor.database[:couch_sequence].where(name: 'items').first[:seq]
+    sequence = executor.database[:couch_sequence].where(name: 'items').first
+    assert_equal 2, sequence[:seq]
+    assert_equal t, sequence[:last_transaction_at]
   end
 
   def test_delete_nested_items
@@ -190,11 +206,15 @@ class QueryExecutorTest < Test::Unit::TestCase
     @queue.add_operation(end_transaction_operation(2))
     @queue.close
 
-    executor.start
+
+    t = Time.now
+    Timecop.freeze(t) { executor.start }
 
     assert_equal [2], executor.database[:items].select(:count).to_a.map{ |i| i[:count] }
     assert_equal ['another child name'], executor.database[:item_children].select(:child_name).to_a.map{ |g| g[:child_name] }
-    assert_equal 2, executor.database[:couch_sequence].where(name: 'items').first[:seq]
+    sequence = executor.database[:couch_sequence].where(name: 'items').first
+    assert_equal 2, sequence[:seq]
+    assert_equal t, sequence[:last_transaction_at]
   end
 
   def test_sequence_number_defaults_to_zero

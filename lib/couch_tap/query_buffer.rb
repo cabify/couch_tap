@@ -29,6 +29,10 @@ module CouchTap
       @buffer.values.each &block
     end
 
+    def get_entity(name)
+      @buffer[name]
+    end
+
     private
 
     def get_or_create(entity, top_level)
@@ -84,6 +88,10 @@ module CouchTap
 
     def any_insert?
       @inserts.any?
+    end
+
+    def get_insert(id)
+      @inserts[id]
     end
   end
 end

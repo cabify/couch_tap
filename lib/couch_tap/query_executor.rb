@@ -90,6 +90,10 @@ module CouchTap
       @metrics.increment('transactions')
       @metrics.gauge('queue.back_pressure', @queue.length)
       batch_summary = {}
+
+      @buffer.delete(CouchTap::Operations::DeleteOperation.new(:couch_sequence, true, :name, @name))
+      @buffer.insert(CouchTap::Operations::InsertOperation.new(:couch_sequence, true, @name, name: @name, seq: seq, last_transaction_at: Time.now))
+
       total_timing = measure do
         @database.transaction do
           start_of_transaction_callbacks.each { |cbk| cbk.execute(@buffer, @metrics, logger) }
@@ -118,10 +122,6 @@ module CouchTap
             end
             # TODO possible post transaction handlers should run here
           end
-
-          logger.debug "Changes applied, updating sequence number now to #{@seq}"
-          update_sequence(seq)
-          logger.debug "#{@name}'s new sequence: #{seq}"
         end
       end
       @metrics.histogram('transactions.time', total_timing)
@@ -151,11 +151,6 @@ module CouchTap
       row ? row[:seq] : 0
     end
 
-    def update_sequence(seq)
-      logger.debug "Updating sequence number for #{@name} to #{seq}"
-      database[:couch_sequence].where(:name => @name).update(:seq => seq)
-    end
-
     def create_sequence_table(name)
       logger.debug "Creating :couch_sequence table..."
       database.create_table :couch_sequence do
@@ -163,6 +158,7 @@ module CouchTap
         Bignum :seq, :default => 0
         DateTime :created_at
         DateTime :updated_at
+        DateTime :last_transaction_at
       end
       # Add first row
       database[:couch_sequence].insert(:name => name)
