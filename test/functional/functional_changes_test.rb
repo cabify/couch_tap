@@ -2,6 +2,30 @@ require 'test_helper'
 
 class FunctionalChangesTest < Test::Unit::TestCase
 
+  class AddDummyFieldCallback < CouchTap::Callbacks::Callback
+    def execute(document, metrics, logger)
+      document[:dummy_field] = true
+    end
+  end
+
+  class UpdateTransactionTimeCallback < CouchTap::Callbacks::Callback
+    def execute(buffer, metrics, logger)
+      entity = buffer.get_entity(:couch_sequence)
+      data = entity.get_insert(TEST_DB_NAME)
+      entity.insert(TEST_DB_NAME, data.first.merge(last_transaction_at: Time.new(1985, 03, 19)))
+    end
+  end
+
+  class PrefixEventKeyCallback < CouchTap::Callbacks::Callback
+    def execute(operation, metrics, logger)
+      if operation.table == :analytic_events
+        attrs = operation.attributes
+        attrs[:key] = "prefix.#{attrs[:key]}"
+        operation.attributes = attrs
+      end
+    end
+  end
+
   def test_insert_sales
     doc = { "id" => 1, "seq" => 123, "doc" => {
       "_id" => "10", "type" => "Sale", "code" => "Code 1", "amount" => 600
@@ -198,16 +222,16 @@ class FunctionalChangesTest < Test::Unit::TestCase
     assert_sequence changes.seq, 112
   end
 
-  def insert_different_document_types
+  def test_insert_different_document_types
     docs = [
       { "id" => 1, "seq" => 111, "doc" => {
         "_id" => "50", "type" => "Sale", "code" => "Code 1", "amount" => 600, "entries" => [{ "price" => 500 }, { "price" => 100 }]
       }},
-      { "id" => 2, "seq" => 112, "doc" => { "_id" => "3000", "key" => "click", "value" => "yes" }},
+      { "id" => 2, "seq" => 112, "doc" => { "_id" => "3000", "type" => "AnalyticEvent", "key" => "click", "value" => "yes" }},
       { "id" => 3, "seq" => 113, "doc" => {
         "_id" => "51", "type" => "Sale", "code" => "Code 2", "amount" => 900, "entries" => [{ "price" => 300 }, { "price" => 600 }]
       }},
-      { "id" => 4, "seq" => 114, "doc" => { "_id" => "3001", "key" => "double-click", "value" => "too much" }}
+      { "id" => 4, "seq" => 114, "doc" => { "_id" => "3001", "type" => "AnalyticEvent", "key" => "double-click", "value" => "too much" }}
     ]
 
     changes = config_changes batch_size: 7
@@ -230,8 +254,8 @@ class FunctionalChangesTest < Test::Unit::TestCase
 
     events = @database[:analytic_events].to_a
     assert_equal 2, events.count
-    assert_includes events, analytic_event_id: "3000", key: "click", value: "yes"
-    assert_includes events, analytic_event_id: "3001", key: "double-click", value: "too much"
+    assert_includes events, analytic_event_id: "3000", key: "prefix.click", value: "yes", dummy_field: true
+    assert_includes events, analytic_event_id: "3001", key: "prefix.double-click", value: "too much", dummy_field: true
 
     assert_sequence changes.seq, 114
   end
@@ -254,6 +278,10 @@ class FunctionalChangesTest < Test::Unit::TestCase
   def config_changes(opts)
     changes = CouchTap::Changes.new(couch_db: TEST_DB_ROOT, timeout: 60) do
       database db: 'sqlite:/', batch_size: opts.fetch(:batch_size)
+
+      before_transaction UpdateTransactionTimeCallback.new
+      before_process_document AddDummyFieldCallback.new
+      before_buffering_insert PrefixEventKeyCallback.new
 
       document type: 'Sale' do
         table :sales do
@@ -296,11 +324,16 @@ class FunctionalChangesTest < Test::Unit::TestCase
       String :analytic_event_id
       String :key
       String :value
+      Boolean :dummy_field
     end
   end
 
   def assert_sequence(in_memory, expected)
     assert_equal expected, in_memory
-    assert_equal expected, @database[:couch_sequence].where(name: "couch_tap").to_a.first[:seq]
+    records = @database[:couch_sequence].where(name: TEST_DB_NAME).to_a
+    assert_equal 1, records.count
+    record = records.first
+    assert_equal expected, record[:seq]
+    assert_equal Time.new(1985, 3, 19), record[:last_transaction_at]
   end
 end

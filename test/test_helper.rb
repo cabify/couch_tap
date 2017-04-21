@@ -4,6 +4,7 @@ $LOAD_PATH.unshift(File.join(File.dirname(__FILE__), "..", "lib"))
 
 require 'test/unit'
 require 'mocha/setup'
+require 'timecop'
 require 'couch_tap'
 
 TEST_DB_HOST = 'http://127.0.0.1:5984/'

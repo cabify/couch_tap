@@ -3,6 +3,8 @@ require 'couch_tap/query_buffer'
 
 module CouchTap
   class QueryExecutor
+    START_OF_TRANSACTION_PHASE = :beginning
+    BUFFER_INSERT_PHASE = :buffer_insert
 
     attr_reader :database, :seq
 
@@ -27,6 +29,9 @@ module CouchTap
       @last_transaction_ran_at = Time.at(0)
 
       @timeout_time = data.fetch(:timeout, 60)
+
+      @callbacks = {}
+
       @seq = find_or_create_sequence_number(name)
       logger.info "QueryExecutor successfully initialised with sequence: #{@seq}"
     end
@@ -35,6 +40,7 @@ module CouchTap
       while op = @queue.pop
         case op
         when Operations::InsertOperation
+          buffer_insert_callbacks.each { |cbk| cbk.execute(op, @metrics, logger) }
           @buffer.insert(op)
         when Operations::DeleteOperation
           @buffer.delete(op)
@@ -66,13 +72,17 @@ module CouchTap
       @queue.close
     end
 
+    def add_pre_transaction_callback(callback)
+      (@callbacks[START_OF_TRANSACTION_PHASE] ||= []) << callback
+    end
+
+    def add_buffer_insert_callback(callback)
+      (@callbacks[BUFFER_INSERT_PHASE] ||= []) << callback
+    end
+
     private
 
     def run_transaction(seq)
-      if @buffer.size == 0
-        logger.info "Skipping empty batch for #{@name}"
-        return
-      end
       if @buffer.size < @batch_size
         # Transaction was fired by the timer
         return if (Time.now - @last_transaction_ran_at) < @timeout_time
@@ -82,8 +92,13 @@ module CouchTap
       @metrics.increment('transactions')
       @metrics.gauge('queue.back_pressure', @queue.length)
       batch_summary = {}
+
+      @buffer.delete(CouchTap::Operations::DeleteOperation.new(:couch_sequence, true, :name, @name))
+      @buffer.insert(CouchTap::Operations::InsertOperation.new(:couch_sequence, true, @name, name: @name, seq: seq, last_transaction_at: Time.now))
+
       total_timing = measure do
         @database.transaction do
+          start_of_transaction_callbacks.each { |cbk| cbk.execute(@buffer, @metrics, logger) }
           @buffer.each do |entity|
            logger.debug "Processing queries for #{entity.name}"
             batch_summary[entity.name] ||= []
@@ -106,12 +121,10 @@ module CouchTap
               @metrics.gauge('insert.latency.unit', delta/values.size.to_f, table_name: entity.name)
               batch_summary[entity.name] << "Inserted #{values.size} in #{delta} ms."
               logger.debug "#{entity.name}:  #{values.size} rows inserted in #{delta} ms."
+              @metrics.increment('insertions', values.size, { table: entity.name } )
             end
+            # TODO possible post transaction handlers should run here
           end
-
-          logger.debug "Changes applied, updating sequence number now to #{@seq}"
-          update_sequence(seq)
-          logger.debug "#{@name}'s new sequence: #{seq}"
         end
       end
       @metrics.histogram('transactions.time', total_timing)
@@ -141,11 +154,6 @@ module CouchTap
       row ? row[:seq] : 0
     end
 
-    def update_sequence(seq)
-      logger.debug "Updating sequence number for #{@name} to #{seq}"
-      database[:couch_sequence].where(:name => @name).update(:seq => seq)
-    end
-
     def create_sequence_table(name)
       logger.debug "Creating :couch_sequence table..."
       database.create_table :couch_sequence do
@@ -153,6 +161,7 @@ module CouchTap
         Bignum :seq, :default => 0
         DateTime :created_at
         DateTime :updated_at
+        DateTime :last_transaction_at
       end
       # Add first row
       database[:couch_sequence].insert(:name => name)
@@ -160,6 +169,14 @@ module CouchTap
 
     def logger
       CouchTap.logger
+    end
+
+    def start_of_transaction_callbacks
+      @callbacks[START_OF_TRANSACTION_PHASE] || []
+    end
+
+    def buffer_insert_callbacks
+      @callbacks[BUFFER_INSERT_PHASE] || []
     end
   end
 end
