@@ -120,6 +120,7 @@ module CouchTap
             if entity.any_insert?
               keys = columns(entity.name)
               values = entity.insert_values(keys)
+              values = entity.clean_values(values)
               delta = measure do
                 database[entity.name].import(keys, values)
               end

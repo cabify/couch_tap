@@ -96,6 +96,16 @@ module CouchTap
       end
     end
 
+    def clean_values(values)
+      values.map { |val|
+        if val.is_a? String
+          val.delete("\000")
+        else
+          val
+        end
+      }
+    end
+
     def any_delete?
       @deletes.any?
     end
