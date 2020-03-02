@@ -65,7 +65,7 @@ GEM
     multi_json (1.13.1)
     power_assert (1.1.1)
     public_suffix (2.0.5)
-    rake (12.3.0)
+    rake (13.0.1)
     retryable (3.0.4)
     safe_yaml (1.0.4)
     sequel (5.19.0)
